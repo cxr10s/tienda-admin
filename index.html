@@ -770,6 +770,7 @@ function renderTabla(pedidos) {
                 <td style="font-size:13px; color:var(--muted); max-width:200px;">${resumen}</td>
                 <td class="td-total">$${fmt(p.total)} COP</td>
                 <td><span class="badge badge-${p.estado}">${p.estado.toUpperCase()}</span></td>
+                <td><span class="badge badge-${p.estado_pago === 'pagado' ? 'entregado' : 'pendiente'}">${p.estado_pago === 'pagado' ? '💳 PAGADO' : '⏳ SIN PAGAR'}</span></td>
                 <td class="td-fecha">${fecha}</td>
             </tr>`;
     }).join('');
@@ -783,6 +784,7 @@ function renderTabla(pedidos) {
                     <th>PRODUCTOS</th>
                     <th>TOTAL</th>
                     <th>ESTADO</th>
+                    <th>PAGO</th>
                     <th>FECHA</th>
                 </tr>
             </thead>
