@@ -112,6 +112,7 @@
         }
 
         .login-btn:hover { opacity: 0.85; }
+        .login-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .login-error { color: #ef4444; font-size: 13px; margin-top: 12px; display: none; }
 
         /* DASHBOARD */
@@ -470,11 +471,7 @@
             margin-bottom: 4px;
         }
 
-        .modal-info-value {
-            font-size: 14px;
-            font-weight: 600;
-            font-family: 'Syne', sans-serif;
-        }
+        .modal-info-value { font-size: 14px; font-weight: 600; }
 
         .modal-product {
             display: flex;
@@ -575,7 +572,7 @@
 <!-- LOGIN -->
 <div id="login-screen">
     <div class="login-box">
-        <div class="login-logo">STORE.</div>
+        <div class="login-logo">STORE</div>
         <h1 class="login-title">Panel Admin</h1>
         <div class="login-field">
             <label>USUARIO</label>
@@ -585,7 +582,7 @@
             <label>CONTRASEÑA</label>
             <input type="password" id="admin-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter') doLogin()">
         </div>
-        <button class="login-btn" onclick="doLogin()">Entrar</button>
+        <button class="login-btn" id="login-btn" onclick="doLogin()">Entrar</button>
         <div class="login-error" id="login-error">Usuario o contraseña incorrectos</div>
     </div>
 </div>
@@ -594,7 +591,7 @@
 <div id="dashboard">
     <div class="topbar">
         <div class="topbar-left">
-            <span class="topbar-logo">STORE.</span>
+            <span class="topbar-logo">STORE</span>
             <span class="topbar-title">/ Panel de Administración</span>
         </div>
         <div class="topbar-right">
@@ -655,33 +652,80 @@
 
 <script>
 
-// Formateador de números colombiano
-
-
 function fmt(n) {
     return Math.round(Number(n)).toLocaleString('es-CO');
 }
 
 // ── CONFIG ──────────────────────────────────────────────
-const SUPABASE_URL     = 'https://qvaaistunotxgpyqebya.supabase.co';
-const SUPABASE_ANON    = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2YWFpc3R1bm90eGdweXFlYnlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMTk2MzMsImV4cCI6MjA4OTY5NTYzM30.eG62aFEYEtigW7Vb9wJ2VCDK4HVzKCxEredHmVNZXjU';
-const ADMIN_USER       = 'administrador_';
-const ADMIN_PASS       = 'Limelight3-Cahoots0-Crispy3-Giant2';
+const SUPABASE_URL  = 'https://qvaaistunotxgpyqebya.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2YWFpc3R1bm90eGdweXFlYnlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMTk2MzMsImV4cCI6MjA4OTY5NTYzM30.eG62aFEYEtigW7Vb9wJ2VCDK4HVzKCxEredHmVNZXjU';
 
 let todosLosPedidos = [];
 let filtroActual    = 'todos';
 
-// ── LOGIN ────────────────────────────────────────────────
-function doLogin() {
+// ── HASH SHA-256 ─────────────────────────────────────────
+// Se usa para comparar la contraseña ingresada con el hash guardado en Supabase
+// sin necesidad de enviar la contraseña real por la red.
+async function sha256(text) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(text);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(hashBuffer))
+        .map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ── LOGIN (verifica contra tabla admin_config en Supabase) ──
+async function doLogin() {
     const u = document.getElementById('admin-user').value.trim();
     const p = document.getElementById('admin-pass').value.trim();
-    if (u === ADMIN_USER && p === ADMIN_PASS) {
-        document.getElementById('login-screen').style.display = 'none';
-        document.getElementById('dashboard').style.display = 'block';
-        actualizarFecha();
-        cargarPedidos();
-    } else {
-        document.getElementById('login-error').style.display = 'block';
+    const btn = document.getElementById('login-btn');
+    const errorEl = document.getElementById('login-error');
+
+    if (!u || !p) {
+        errorEl.textContent = 'Completa usuario y contraseña.';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Verificando...';
+    errorEl.style.display = 'none';
+
+    try {
+        // Hashear la contraseña ingresada antes de compararla
+        const passHash = await sha256(p);
+
+        // Consultar la tabla admin_config en Supabase
+        const res = await fetch(
+            `${SUPABASE_URL}/rest/v1/admin_config?select=pass_hash&username=eq.${encodeURIComponent(u)}&limit=1`,
+            {
+                headers: {
+                    'apikey': SUPABASE_ANON,
+                    'Authorization': `Bearer ${SUPABASE_ANON}`
+                }
+            }
+        );
+
+        if (!res.ok) throw new Error('Error de red');
+
+        const rows = await res.json();
+
+        // Comparar hash localmente — la contraseña real nunca viaja por la red
+        if (rows.length > 0 && rows[0].pass_hash === passHash) {
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('dashboard').style.display = 'block';
+            actualizarFecha();
+            cargarPedidos();
+        } else {
+            errorEl.textContent = 'Usuario o contraseña incorrectos.';
+            errorEl.style.display = 'block';
+        }
+    } catch (e) {
+        errorEl.textContent = 'Error de conexión. Intenta de nuevo.';
+        errorEl.style.display = 'block';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Entrar';
     }
 }
 
@@ -928,11 +972,9 @@ async function cambiarEstado(id, nuevoEstado) {
             method: 'PATCH',
             body: JSON.stringify({ estado: nuevoEstado })
         });
-        // Actualizar localmente
         const p = todosLosPedidos.find(x => x.id === id);
         if (p) p.estado = nuevoEstado;
 
-        // Actualizar botones del modal
         document.querySelectorAll('.estado-btn').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.estado === nuevoEstado);
         });
