@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel Admin — STORE.</title>
+    <title>Panel Admin — STORE</title>
     <link rel="icon" type="image/svg+xml" href="icon-admin.svg">
     <link rel="apple-touch-icon" href="icon-admin.svg">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
@@ -387,6 +387,7 @@
         .badge-enviado   { background: rgba(59,130,246,0.15); color: var(--enviado); }
         .badge-entregado { background: rgba(34,197,94,0.15);  color: var(--entregado); }
         .badge-cancelado { background: rgba(239,68,68,0.15);  color: var(--cancelado); }
+        .badge-pagado    { background: rgba(34,197,94,0.15);  color: #22c55e; }
 
         .badge-pago {
             display: inline-block;
@@ -536,6 +537,17 @@
         .estado-btn[data-estado="cancelado"]:hover,
         .estado-btn[data-estado="cancelado"].active  { background: rgba(239,68,68,0.15);   color: var(--cancelado); border-color: var(--cancelado); }
 
+        /* Botones bloqueados — no disponibles para el admin */
+        .estado-btn.locked {
+            opacity: 0.25;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+        .estado-btn.locked::after {
+            content: ' 🔒';
+            font-size: 10px;
+        }
+
         /* ── BOTONES MODAL FOOTER ── */
         .modal-footer-btns {
             display: grid;
@@ -645,7 +657,7 @@
 <!-- LOGIN -->
 <div id="login-screen">
     <div class="login-box">
-        <div class="login-logo">STORE.</div>
+        <div class="login-logo">STORE</div>
         <h1 class="login-title">Panel Admin</h1>
         <div class="login-field">
             <label>USUARIO</label>
@@ -666,7 +678,7 @@
 <div id="dashboard">
     <div class="topbar">
         <div class="topbar-left">
-            <span class="topbar-logo">STORE.</span>
+            <span class="topbar-logo">STORE</span>
             <span class="topbar-title">/ Admin</span>
         </div>
         <div class="topbar-right">
@@ -706,6 +718,7 @@
         <div class="toolbar">
             <button class="filter-btn active" onclick="setFiltro('todos', this)">Todos</button>
             <button class="filter-btn" onclick="setFiltro('pendiente', this)">Pendientes</button>
+            <button class="filter-btn" onclick="setFiltro('pagado', this)">💳 Pagados</button>
             <button class="filter-btn" onclick="setFiltro('enviado', this)">Enviados</button>
             <button class="filter-btn" onclick="setFiltro('entregado', this)">Entregados</button>
             <button class="filter-btn" onclick="setFiltro('cancelado', this)">Cancelados</button>
@@ -753,7 +766,7 @@ function fmt(n) {
 }
 
 // ⚠️ Reemplaza con tu número real: 57 + número sin 0
-const WA_NUMBER = '573XXXXXXXXX';
+const WA_NUMBER = '573116039256';
 
 const SUPABASE_URL  = 'https://qvaaistunotxgpyqebya.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2YWFpc3R1bm90eGdweXFlYnlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMTk2MzMsImV4cCI6MjA4OTY5NTYzM30.eG62aFEYEtigW7Vb9wJ2VCDK4HVzKCxEredHmVNZXjU';
@@ -873,6 +886,9 @@ function actualizarStats() {
     document.getElementById('stat-enviados').textContent   = p.filter(x => x.estado === 'enviado').length;
     document.getElementById('stat-entregados').textContent = p.filter(x => x.estado === 'entregado').length;
     document.getElementById('stat-ingresos').textContent   = '$' + fmt(ingresosPagados);
+    // Actualizar counter de pagados si existe
+    const elPag = document.getElementById('stat-pagados');
+    if (elPag) elPag.textContent = p.filter(x => x.estado === 'pagado').length;
 }
 
 function pedidosFiltrados() {
@@ -976,10 +992,15 @@ function abrirModal(id) {
             </div>
         </div>`).join('');
 
-    const estadoBtns = ['pendiente','enviado','entregado','cancelado'].map(e => `
+    const estadoBtns = ['pagado','enviado','entregado'].map(e => `
         <button class="estado-btn ${p.estado === e ? 'active' : ''}"
             data-estado="${e}"
             onclick="cambiarEstado('${p.id}', '${e}')">
+            ${e.charAt(0).toUpperCase() + e.slice(1)}
+        </button>`).join('') +
+        ['pendiente','cancelado'].map(e => `
+        <button class="estado-btn locked ${p.estado === e ? 'active' : ''}"
+            data-estado="${e}" title="No disponible — protección al cliente">
             ${e.charAt(0).toUpperCase() + e.slice(1)}
         </button>`).join('');
 
@@ -1079,6 +1100,11 @@ function cerrarModal() {
 
 // ── CAMBIAR ESTADO ──
 async function cambiarEstado(id, nuevoEstado) {
+    // Protección: el admin NO puede poner un pedido en pendiente ni cancelado
+    if (nuevoEstado === 'pendiente' || nuevoEstado === 'cancelado') {
+        showToast('⛔ No puedes asignar ese estado — protección al cliente', '#ef4444');
+        return;
+    }
     try {
         await supabaseFetch(`pedidos?id=eq.${id}`, {
             method: 'PATCH',
