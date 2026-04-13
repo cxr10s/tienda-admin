@@ -722,9 +722,6 @@
             <button class="filter-btn" onclick="setFiltro('enviado', this)">Enviados</button>
             <button class="filter-btn" onclick="setFiltro('entregado', this)">Entregados</button>
             <button class="filter-btn" onclick="setFiltro('cancelado', this)">Cancelados</button>
-            <button class="filter-pago-btn" id="btn-solo-pagados" onclick="toggleFiltroPago(this)">
-                <i class="fa-solid fa-credit-card"></i> Solo pagados
-            </button>
             <div class="toolbar-right">
                 <input class="search-input" type="text" placeholder="Buscar nombre, email o ID..." 
                        oninput="buscar(this.value)" id="search-input">
@@ -992,19 +989,27 @@ function abrirModal(id) {
             </div>
         </div>`).join('');
 
-    const estadoBtns = ['pagado','enviado','entregado'].map(e => `
+    // Según estado_pago: pagado → solo pagado/enviado/entregado; pendiente → solo pendiente/cancelado
+    const ep = p.estado_pago || 'pendiente';
+    const estadosDisponibles  = ep === 'pagado' ? ['pagado','enviado','entregado'] : ['pendiente','cancelado'];
+    const estadosBloqueados   = ep === 'pagado' ? ['pendiente','cancelado']        : ['pagado','enviado','entregado'];
+    const tooltipBloqueado    = ep === 'pagado'
+        ? 'No disponible — protección al cliente'
+        : 'No disponible — pago aún no confirmado';
+
+    const estadoBtns =
+        estadosDisponibles.map(e => `
         <button class="estado-btn ${p.estado === e ? 'active' : ''}"
             data-estado="${e}"
             onclick="cambiarEstado('${p.id}', '${e}')">
             ${e.charAt(0).toUpperCase() + e.slice(1)}
         </button>`).join('') +
-        ['pendiente','cancelado'].map(e => `
+        estadosBloqueados.map(e => `
         <button class="estado-btn locked ${p.estado === e ? 'active' : ''}"
-            data-estado="${e}" title="No disponible — protección al cliente">
+            data-estado="${e}" title="${tooltipBloqueado}">
             ${e.charAt(0).toUpperCase() + e.slice(1)}
         </button>`).join('');
 
-    const ep = p.estado_pago || 'pendiente';
     const pagoColor = ep === 'pagado' ? '#22c55e' : ep === 'error' ? '#ef4444' : '#f59e0b';
     const pagoLabel = ep === 'pagado' ? 'Pago confirmado' : ep === 'error' ? 'Pago rechazado / cancelado' : 'Pago pendiente';
     const pagoIcon  = ep === 'pagado' ? '✅' : ep === 'error' ? '❌' : '⏳';
@@ -1100,9 +1105,20 @@ function cerrarModal() {
 
 // ── CAMBIAR ESTADO ──
 async function cambiarEstado(id, nuevoEstado) {
-    // Protección: el admin NO puede poner un pedido en pendiente ni cancelado
-    if (nuevoEstado === 'pendiente' || nuevoEstado === 'cancelado') {
+    const p = todosLosPedidos.find(x => x.id === id);
+    if (!p) return;
+
+    const ep = p.estado_pago || 'pendiente';
+
+    // Pago confirmado → no se puede volver a pendiente ni cancelado
+    if (ep === 'pagado' && (nuevoEstado === 'pendiente' || nuevoEstado === 'cancelado')) {
         showToast('⛔ No puedes asignar ese estado — protección al cliente', '#ef4444');
+        return;
+    }
+
+    // Pago pendiente → solo se permite pendiente y cancelado
+    if (ep !== 'pagado' && (nuevoEstado === 'pagado' || nuevoEstado === 'enviado' || nuevoEstado === 'entregado')) {
+        showToast('⛔ No disponible — el pago aún no ha sido confirmado', '#ef4444');
         return;
     }
     try {
@@ -1110,7 +1126,6 @@ async function cambiarEstado(id, nuevoEstado) {
             method: 'PATCH',
             body: JSON.stringify({ estado: nuevoEstado })
         });
-        const p = todosLosPedidos.find(x => x.id === id);
         if (p) p.estado = nuevoEstado;
 
         document.querySelectorAll('.estado-btn').forEach(btn => {
