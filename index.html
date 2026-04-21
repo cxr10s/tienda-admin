@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel Admin </title>
+    <title>Panel Admin — Shop</title>
     <link rel="icon" type="image/svg+xml" href="icon-admin.svg">
     <link rel="apple-touch-icon" href="icon-admin.svg">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
@@ -115,10 +115,6 @@
         .login-btn:hover    { opacity: 0.85; }
         .login-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .login-error { color: #ef4444; font-size: 12px; margin-top: 12px; display: none; }
-
-        /* ── OJITO NATIVO — color claro ── */
-        input[type="password"]::-ms-reveal { filter: invert(1) brightness(1.5); }
-        input::-webkit-credentials-auto-fill-button { background-color: #D3D7D7 !important; }
 
         /* ── DASHBOARD ── */
         #dashboard { display: none; }
@@ -655,6 +651,7 @@
             .stat-value.small { font-size: 14px; }
         }
     </style>
+    <script src="theme-switch.js"></script>
 </head>
 <body>
 
@@ -664,19 +661,17 @@
         <div class="login-logo">Shop</div>
         <h1 class="login-title">Panel Admin</h1>
         <div class="login-field">
-            <label>EMAIL</label>
-            <input type="password" id="admin-email" placeholder="••••••••"
-                   autocomplete="off" autocorrect="off" autocapitalize="off"
+            <label>USUARIO</label>
+            <input type="text" id="admin-user" placeholder="admin" autocomplete="off"
                    onkeydown="if(event.key==='Enter') document.getElementById('admin-pass').focus()">
         </div>
         <div class="login-field">
             <label>CONTRASEÑA</label>
             <input type="password" id="admin-pass" placeholder="••••••••"
-                   autocomplete="new-password"
                    onkeydown="if(event.key==='Enter') doLogin()">
         </div>
         <button class="login-btn" id="login-btn" onclick="doLogin()">Entrar</button>
-        <div class="login-error" id="login-error">Correo o contraseña incorrectos</div>
+        <div class="login-error" id="login-error">Usuario o contraseña incorrectos</div>
     </div>
 </div>
 
@@ -689,6 +684,24 @@
         </div>
         <div class="topbar-right">
             <span id="topbar-fecha" class="topbar-fecha"></span>
+            <div class="theme-switch-wrap" style="display:flex;align-items:center;">
+  <div class="theme-switch">
+    <input type="checkbox" id="theme-checkbox" onchange="toggleTheme(this.checked)" />
+    <label for="theme-checkbox" title="Cambiar tema">
+      <div></div>
+      <span>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+          <path fill-rule="evenodd" d="M9.528 1.718a.75.75 0 01.162.819A8.97 8.97 0 009 6a9 9 0 009 9 8.97 8.97 0 003.463-.69.75.75 0 01.981.98 10.503 10.503 0 01-9.694 6.46c-5.799 0-10.5-4.701-10.5-10.5 0-4.368 2.667-8.112 6.46-9.694a.75.75 0 01.818.162z" clip-rule="evenodd"></path>
+        </svg>
+      </span>
+      <span>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2.25a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75zM7.5 12a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM18.894 6.166a.75.75 0 00-1.06-1.06l-1.591 1.59a.75.75 0 101.06 1.061l1.591-1.59zM21.75 12a.75.75 0 01-.75.75h-2.25a.75.75 0 010-1.5H21a.75.75 0 01.75.75zM17.834 18.894a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 10-1.061 1.06l1.59 1.591zM12 18a.75.75 0 01.75.75V21a.75.75 0 01-1.5 0v-2.25A.75.75 0 0112 18zM7.758 17.303a.75.75 0 00-1.061-1.06l-1.591 1.59a.75.75 0 001.06 1.061l1.591-1.59zM6 12a.75.75 0 01-.75.75H3a.75.75 0 010-1.5h2.25A.75.75 0 016 12zM6.697 7.757a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 00-1.061 1.06l1.59 1.591z"></path>
+        </svg>
+      </span>
+    </label>
+  </div>
+</div>
             <button class="logout-btn" onclick="doLogout()">
                 <i class="fa-solid fa-right-from-bracket"></i> Salir
             </button>
@@ -768,8 +781,6 @@ function fmt(n) {
     return Math.round(Number(n)).toLocaleString('es-CO');
 }
 
-
-// ⚠️ Reemplaza con tu número real: 57 + número sin 0
 const WA_NUMBER = '573116039256';
 
 const SUPABASE_URL  = 'https://qvaaistunotxgpyqebya.supabase.co';
@@ -788,18 +799,22 @@ function showToast(msg, color = '#c8ff00') {
     setTimeout(() => t.classList.remove('show'), 2200);
 }
 
-// ── AUTH STATE — token JWT del admin ──
-let _adminToken = null;
+// ── SHA-256 ──
+async function sha256(text) {
+    const data = new TextEncoder().encode(text);
+    const buf  = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
 
-// ── LOGIN con Supabase Auth ──
+// ── LOGIN ──
 async function doLogin() {
-    const email  = document.getElementById('admin-email').value.trim();
-    const pass   = document.getElementById('admin-pass').value.trim();
-    const btn    = document.getElementById('login-btn');
-    const errEl  = document.getElementById('login-error');
+    const u = document.getElementById('admin-user').value.trim();
+    const p = document.getElementById('admin-pass').value.trim();
+    const btn = document.getElementById('login-btn');
+    const errEl = document.getElementById('login-error');
 
-    if (!email || !pass) {
-        errEl.textContent = 'Completa email y contraseña.';
+    if (!u || !p) {
+        errEl.textContent = 'Completa usuario y contraseña.';
         errEl.style.display = 'block';
         return;
     }
@@ -809,31 +824,23 @@ async function doLogin() {
     errEl.style.display = 'none';
 
     try {
-        const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-            method: 'POST',
-            headers: {
-                'apikey': SUPABASE_ANON,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ email, password: pass })
-        });
+        const passHash = await sha256(p);
+        const res = await fetch(
+            `${SUPABASE_URL}/rest/v1/admin_config?select=pass_hash&username=eq.${encodeURIComponent(u)}&limit=1`,
+            { headers: { 'apikey': SUPABASE_ANON, 'Authorization': `Bearer ${SUPABASE_ANON}` } }
+        );
+        if (!res.ok) throw new Error('Error de red');
+        const rows = await res.json();
 
-        const data = await res.json();
-
-        if (!res.ok || !data.access_token) {
-            errEl.textContent = 'Correo o contraseña incorrectos.';
+        if (rows.length > 0 && rows[0].pass_hash === passHash) {
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('dashboard').style.display    = 'block';
+            actualizarFecha();
+            cargarPedidos();
+        } else {
+            errEl.textContent = 'Usuario o contraseña incorrectos.';
             errEl.style.display = 'block';
-            return;
         }
-
-        // Guardar token para usarlo en todas las peticiones
-        _adminToken = data.access_token;
-
-        document.getElementById('login-screen').style.display = 'none';
-        document.getElementById('dashboard').style.display    = 'block';
-        actualizarFecha();
-        cargarPedidos();
-
     } catch (e) {
         errEl.textContent = 'Error de conexión. Intenta de nuevo.';
         errEl.style.display = 'block';
@@ -843,23 +850,12 @@ async function doLogin() {
     }
 }
 
-async function doLogout() {
-    // Cerrar sesión en Supabase
-    if (_adminToken) {
-        await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
-            method: 'POST',
-            headers: {
-                'apikey': SUPABASE_ANON,
-                'Authorization': `Bearer ${_adminToken}`
-            }
-        }).catch(() => {});
-    }
-    _adminToken = null;
-    todosLosPedidos = [];
+function doLogout() {
     document.getElementById('login-screen').style.display = 'flex';
     document.getElementById('dashboard').style.display    = 'none';
-    document.getElementById('admin-email').value = '';
-    document.getElementById('admin-pass').value  = '';
+    document.getElementById('admin-user').value = '';
+    document.getElementById('admin-pass').value = '';
+    todosLosPedidos = [];
 }
 
 function actualizarFecha() {
@@ -867,13 +863,12 @@ function actualizarFecha() {
         new Date().toLocaleDateString('es-CO', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
 }
 
-// ── SUPABASE — usa el token del admin autenticado ──
+// ── SUPABASE ──
 async function supabaseFetch(path, options = {}) {
-    const token = _adminToken || SUPABASE_ANON;
     const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
         headers: {
             'apikey': SUPABASE_ANON,
-            'Authorization': `Bearer ${token}`,
+            'Authorization': `Bearer ${SUPABASE_ANON}`,
             'Content-Type': 'application/json',
             'Prefer': 'return=representation',
             ...options.headers
