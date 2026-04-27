@@ -399,6 +399,7 @@
         }
         .badge-pago-pagado    { background: rgba(34,197,94,0.12);   color: #22c55e; border:1px solid rgba(34,197,94,0.2); }
         .badge-pago-pendiente { background: rgba(245,158,11,0.12);  color: #f59e0b; border:1px solid rgba(245,158,11,0.2); }
+        .badge-pago-cancelado { background: rgba(239,68,68,0.12);   color: #ef4444; border:1px solid rgba(239,68,68,0.2); }
         .badge-pago-error     { background: rgba(239,68,68,0.12);   color: #ef4444; border:1px solid rgba(239,68,68,0.2); }
 
         /* ── MODAL ── */
@@ -722,8 +723,6 @@
             <button class="filter-btn" onclick="setFiltro('enviado', this)">Enviados</button>
             <button class="filter-btn" onclick="setFiltro('entregado', this)">Entregados</button>
             <button class="filter-btn" onclick="setFiltro('cancelado', this)">Cancelados</button>
-            <button class="filter-btn" onclick="setFiltroEntrega('tienda', this)">🏪 Recogida</button>
-            <button class="filter-btn" onclick="setFiltroEntrega('domicilio', this)">🚚 Domicilios</button>
             <div class="toolbar-right">
                 <input class="search-input" type="text" placeholder="Buscar nombre, email o ID..." 
                        oninput="buscar(this.value)" id="search-input">
@@ -772,7 +771,6 @@ const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 let todosLosPedidos = [];
 let filtroActual    = 'todos';
 let filtroPagados   = false;
-let filtroEntrega   = null; // null = todos, 'tienda' = recogida, 'domicilio' = domicilios
 
 // ── TOAST ──
 function showToast(msg, color = '#c8ff00') {
@@ -890,15 +888,14 @@ function actualizarStats() {
 function pedidosFiltrados() {
     const q = (document.getElementById('search-input')?.value || '').toLowerCase().trim();
     return todosLosPedidos.filter(p => {
-        const matchFiltro   = filtroActual === 'todos' || p.estado === filtroActual;
-        const matchPago     = !filtroPagados || p.estado_pago === 'pagado';
-        const matchEntrega  = !filtroEntrega || (p.tipo_entrega || 'tienda') === filtroEntrega;
-        const matchSearch   = !q
+        const matchFiltro = filtroActual === 'todos' || p.estado === filtroActual;
+        const matchPago   = !filtroPagados || p.estado_pago === 'pagado';
+        const matchSearch = !q
             || p.nombre.toLowerCase().includes(q)
             || p.email.toLowerCase().includes(q)
             || p.id.toLowerCase().includes(q)
             || p.id.substring(0,8).toLowerCase().includes(q);
-        return matchFiltro && matchPago && matchEntrega && matchSearch;
+        return matchFiltro && matchPago && matchSearch;
     });
 }
 
@@ -911,12 +908,24 @@ function setFiltro(estado, btn) {
 }
 
 function setFiltroEntrega(tipo, btn) {
-    filtroEntrega = filtroEntrega === tipo ? null : tipo;
+    // Toggle: si ya estaba activo, desactivar
+    if (filtroEntrega === tipo) {
+        filtroEntrega = null;
+        filtroActual  = 'todos';
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        document.querySelector('.filter-btn').classList.add('active');
+        renderTabla(pedidosFiltrados());
+        return;
+    }
+    filtroEntrega = tipo;
     filtroActual  = 'todos';
     document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-    if (filtroEntrega) btn.classList.add('active');
-    else document.querySelector('.filter-btn').classList.add('active');
-    renderTabla(pedidosFiltrados());
+    btn.classList.add('active');
+    // Recogida y Domicilios: solo pagados (listos para despachar)
+    const lista = todosLosPedidos.filter(p =>
+        (p.tipo_entrega || 'tienda') === tipo && p.estado_pago === 'pagado'
+    );
+    renderTabla(lista);
 }
 
 function toggleFiltroPago(btn) {
@@ -947,7 +956,10 @@ function renderTabla(pedidos) {
         });
         const idCorto    = p.id.substring(0,8).toUpperCase();
         const estadoPago = p.estado_pago || 'pendiente';
-        const labelPago  = estadoPago === 'pagado' ? 'PAGADO' : estadoPago === 'error' ? 'RECHAZADO' : 'PENDIENTE';
+        const labelPago  = estadoPago === 'pagado'    ? 'PAGADO'
+                         : estadoPago === 'cancelado' ? 'CANCELADO'
+                         : estadoPago === 'error'     ? 'RECHAZADO'
+                         : 'PENDIENTE';
 
         return `
             <tr onclick="abrirModal('${p.id}')">
@@ -1002,30 +1014,31 @@ function abrirModal(id) {
             </div>
         </div>`).join('');
 
-    // Según estado_pago: pagado → solo pagado/enviado/entregado; pendiente → solo pendiente/cancelado
-    const ep = p.estado_pago || 'pendiente';
-    const estadosDisponibles  = ep === 'pagado' ? ['pagado','enviado','entregado'] : ['pendiente','cancelado'];
-    const estadosBloqueados   = ep === 'pagado' ? ['pendiente','cancelado']        : ['pagado','enviado','entregado'];
-    const tooltipBloqueado    = ep === 'pagado'
-        ? 'No disponible — protección al cliente'
-        : 'No disponible — pago aún no confirmado';
+    // Todos los estados visibles — los no disponibles tienen cursor:not-allowed
+    const todosEstados = ['pendiente','cancelado','pagado','enviado','entregado'];
+    const disponibles  = ep === 'pagado' ? ['pagado','enviado','entregado'] : ['pendiente','cancelado'];
 
-    const estadoBtns =
-        estadosDisponibles.map(e => `
-        <button class="estado-btn ${p.estado === e ? 'active' : ''}"
+    const estadoBtns = todosEstados.map(e => {
+        const activo = disponibles.includes(e);
+        return `<button class="estado-btn ${p.estado === e ? 'active' : ''} ${!activo ? 'no-disponible' : ''}"
             data-estado="${e}"
-            onclick="cambiarEstado('${p.id}', '${e}')">
-            ${e.charAt(0).toUpperCase() + e.slice(1)}
-        </button>`).join('') +
-        estadosBloqueados.map(e => `
-        <button class="estado-btn locked ${p.estado === e ? 'active' : ''}"
-            data-estado="${e}" title="${tooltipBloqueado}">
-            ${e.charAt(0).toUpperCase() + e.slice(1)}
-        </button>`).join('');
+            style="${!activo ? 'cursor:not-allowed; opacity:0.4;' : ''}"
+            ${activo ? `onclick="cambiarEstado('${p.id}', '${e}')"` : `title="No disponible"`}
+            >${e.charAt(0).toUpperCase() + e.slice(1)}</button>`;
+    }).join('');
 
-    const pagoColor = ep === 'pagado' ? '#22c55e' : ep === 'error' ? '#ef4444' : '#f59e0b';
-    const pagoLabel = ep === 'pagado' ? 'Pago confirmado' : ep === 'error' ? 'Pago rechazado / cancelado' : 'Pago pendiente';
-    const pagoIcon  = ep === 'pagado' ? '✅' : ep === 'error' ? '❌' : '⏳';
+    const pagoColor = ep === 'pagado'    ? '#22c55e'
+                    : ep === 'cancelado' ? '#ef4444'
+                    : ep === 'error'     ? '#ef4444'
+                    : '#f59e0b';
+    const pagoLabel = ep === 'pagado'    ? 'Pago confirmado'
+                    : ep === 'cancelado' ? 'Pago cancelado'
+                    : ep === 'error'     ? 'Pago rechazado'
+                    : 'Pago pendiente';
+    const pagoIcon  = ep === 'pagado'    ? '✅'
+                    : ep === 'cancelado' ? '❌'
+                    : ep === 'error'     ? '❌'
+                    : '⏳';
 
     // Armar mensaje de WhatsApp
     const waLabel   = p.nombre.split(' ')[0];
@@ -1052,22 +1065,9 @@ function abrirModal(id) {
                     <div class="modal-info-value" style="font-size:12px;">${p.email}</div>
                 </div>
                 <div class="modal-info-item" style="grid-column:1/-1;">
-                    <div class="modal-info-label">TIPO DE ENTREGA</div>
-                    <div class="modal-info-value">
-                        ${p.tipo_entrega === 'domicilio'
-                            ? '🚚 Envío a domicilio'
-                            : '🏪 Recogida en tienda — Calle 13 #25-66'}
-                    </div>
-                </div>
-                ${p.tipo_entrega === 'domicilio' ? `
-                <div class="modal-info-item" style="grid-column:1/-1;">
-                    <div class="modal-info-label">DIRECCIÓN DE ENVÍO</div>
-                    <div class="modal-info-value">${p.direccion_envio || p.direccion || '—'}</div>
-                </div>` : `
-                <div class="modal-info-item" style="grid-column:1/-1;">
                     <div class="modal-info-label">DIRECCIÓN</div>
-                    <div class="modal-info-value">${p.direccion || 'Calle 13 #25-66 (recogida en tienda)'}</div>
-                </div>`}
+                    <div class="modal-info-value">${p.direccion}</div>
+                </div>
                 ${p.notas ? `<div class="modal-info-item" style="grid-column:1/-1;">
                     <div class="modal-info-label">NOTAS DEL CLIENTE</div>
                     <div class="modal-info-value" style="color:var(--muted); font-weight:400;">${p.notas}</div>
