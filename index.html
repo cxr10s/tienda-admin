@@ -722,6 +722,8 @@
             <button class="filter-btn" onclick="setFiltro('enviado', this)">Enviados</button>
             <button class="filter-btn" onclick="setFiltro('entregado', this)">Entregados</button>
             <button class="filter-btn" onclick="setFiltro('cancelado', this)">Cancelados</button>
+            <button class="filter-btn" onclick="setFiltroEntrega('tienda', this)">🏪 Recogida</button>
+            <button class="filter-btn" onclick="setFiltroEntrega('domicilio', this)">🚚 Domicilios</button>
             <div class="toolbar-right">
                 <input class="search-input" type="text" placeholder="Buscar nombre, email o ID..." 
                        oninput="buscar(this.value)" id="search-input">
@@ -770,6 +772,7 @@ const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 let todosLosPedidos = [];
 let filtroActual    = 'todos';
 let filtroPagados   = false;
+let filtroEntrega   = null; // null = todos, 'tienda' = recogida, 'domicilio' = domicilios
 
 // ── TOAST ──
 function showToast(msg, color = '#c8ff00') {
@@ -887,21 +890,32 @@ function actualizarStats() {
 function pedidosFiltrados() {
     const q = (document.getElementById('search-input')?.value || '').toLowerCase().trim();
     return todosLosPedidos.filter(p => {
-        const matchFiltro = filtroActual === 'todos' || p.estado === filtroActual;
-        const matchPago   = !filtroPagados || p.estado_pago === 'pagado';
-        const matchSearch = !q
+        const matchFiltro   = filtroActual === 'todos' || p.estado === filtroActual;
+        const matchPago     = !filtroPagados || p.estado_pago === 'pagado';
+        const matchEntrega  = !filtroEntrega || (p.tipo_entrega || 'tienda') === filtroEntrega;
+        const matchSearch   = !q
             || p.nombre.toLowerCase().includes(q)
             || p.email.toLowerCase().includes(q)
             || p.id.toLowerCase().includes(q)
             || p.id.substring(0,8).toLowerCase().includes(q);
-        return matchFiltro && matchPago && matchSearch;
+        return matchFiltro && matchPago && matchEntrega && matchSearch;
     });
 }
 
 function setFiltro(estado, btn) {
-    filtroActual = estado;
+    filtroActual  = estado;
+    filtroEntrega = null;
     document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
+    renderTabla(pedidosFiltrados());
+}
+
+function setFiltroEntrega(tipo, btn) {
+    filtroEntrega = filtroEntrega === tipo ? null : tipo;
+    filtroActual  = 'todos';
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    if (filtroEntrega) btn.classList.add('active');
+    else document.querySelector('.filter-btn').classList.add('active');
     renderTabla(pedidosFiltrados());
 }
 
@@ -941,6 +955,9 @@ function renderTabla(pedidos) {
                 <td>
                     <div class="td-nombre">${p.nombre}</div>
                     <div class="td-email">${p.email}</div>
+                    <div style="font-size:10px;color:#666;margin-top:2px;">
+                        ${p.tipo_entrega === 'domicilio' ? '🚚 Domicilio' : '🏪 Recogida'}
+                    </div>
                 </td>
                 <td class="td-total">$${fmt(p.total)} COP</td>
                 <td><span class="badge badge-${p.estado}">${p.estado.toUpperCase()}</span></td>
@@ -1035,9 +1052,22 @@ function abrirModal(id) {
                     <div class="modal-info-value" style="font-size:12px;">${p.email}</div>
                 </div>
                 <div class="modal-info-item" style="grid-column:1/-1;">
-                    <div class="modal-info-label">DIRECCIÓN</div>
-                    <div class="modal-info-value">${p.direccion}</div>
+                    <div class="modal-info-label">TIPO DE ENTREGA</div>
+                    <div class="modal-info-value">
+                        ${p.tipo_entrega === 'domicilio'
+                            ? '🚚 Envío a domicilio'
+                            : '🏪 Recogida en tienda — Calle 13 #25-66'}
+                    </div>
                 </div>
+                ${p.tipo_entrega === 'domicilio' ? `
+                <div class="modal-info-item" style="grid-column:1/-1;">
+                    <div class="modal-info-label">DIRECCIÓN DE ENVÍO</div>
+                    <div class="modal-info-value">${p.direccion_envio || p.direccion || '—'}</div>
+                </div>` : `
+                <div class="modal-info-item" style="grid-column:1/-1;">
+                    <div class="modal-info-label">DIRECCIÓN</div>
+                    <div class="modal-info-value">${p.direccion || 'Calle 13 #25-66 (recogida en tienda)'}</div>
+                </div>`}
                 ${p.notas ? `<div class="modal-info-item" style="grid-column:1/-1;">
                     <div class="modal-info-label">NOTAS DEL CLIENTE</div>
                     <div class="modal-info-value" style="color:var(--muted); font-weight:400;">${p.notas}</div>
@@ -1054,7 +1084,7 @@ function abrirModal(id) {
                     <span>Descuento</span><span>-$${fmt(p.descuento)} COP</span>
                 </div>` : ''}
                 <div class="modal-total-row">
-                    <span>Envío</span><span>${p.envio > 0 ? '$' + fmt(p.envio) + ' COP' : 'Gratis'}</span>
+                    <span>Envío</span><span>${p.envio > 0 ? '$' + fmt(p.envio) + ' COP' : '¡Gratis!'}</span>
                 </div>
                 <div class="modal-total-row final">
                     <span>TOTAL</span><span>$${fmt(p.total)} COP</span>
