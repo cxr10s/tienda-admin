@@ -812,9 +812,8 @@ async function doLogin() {
         const data = await res.json();
 
         if (res.ok && data.access_token) {
-            localStorage.setItem('sb_token', data.access_token);
             document.getElementById('login-screen').style.display = 'none';
-            document.getElementById('dashboard').style.display = 'block';
+            document.getElementById('dashboard').style.display    = 'block';
             actualizarFecha();
             cargarPedidos();
         } else {
@@ -845,19 +844,16 @@ function actualizarFecha() {
 
 // ── SUPABASE ──
 async function supabaseFetch(path, options = {}) {
-    const token = localStorage.getItem('sb_token');
-
     const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
         headers: {
             'apikey': SUPABASE_ANON,
-            'Authorization': `Bearer ${token}`,
+            'Authorization': `Bearer ${SUPABASE_ANON}`,
             'Content-Type': 'application/json',
             'Prefer': 'return=representation',
             ...options.headers
         },
         ...options
     });
-
     if (!res.ok) throw new Error(await res.text());
     return res.json();
 }
@@ -999,6 +995,50 @@ function renderTabla(pedidos) {
 }
 
 // ── MODAL DETALLE ──
+function getAdminTimeline(p) {
+    const tipoEntrega = p.tipo_entrega || 'tienda';
+    const estado      = p.estado || 'pendiente';
+
+    const pasosRecogida = [
+        { key: 'pendiente',  icon: '🕐', label: 'RECIBIDO'  },
+        { key: 'pagado',     icon: '💳', label: 'PAGADO'    },
+        { key: 'entregado',  icon: '✅', label: 'ENTREGADO' },
+    ];
+    const pasosDomicilio = [
+        { key: 'pendiente',  icon: '🕐', label: 'RECIBIDO'  },
+        { key: 'pagado',     icon: '💳', label: 'PAGADO'    },
+        { key: 'enviado',    icon: '🚚', label: 'EN CAMINO' },
+        { key: 'entregado',  icon: '✅', label: 'ENTREGADO' },
+    ];
+
+    const pasos = tipoEntrega === 'domicilio' ? pasosDomicilio : pasosRecogida;
+    const ordenRecogida  = { pendiente:0, pagado:1, entregado:2, cancelado:-1 };
+    const ordenDomicilio = { pendiente:0, pagado:1, enviado:2, entregado:3, cancelado:-1 };
+    const orden  = tipoEntrega === 'domicilio' ? ordenDomicilio : ordenRecogida;
+    const actual = orden[estado] ?? 0;
+
+    if (estado === 'cancelado') {
+        return `<div style="text-align:center;padding:10px;color:#ef4444;font-weight:700;font-size:12px;letter-spacing:1px;background:rgba(239,68,68,0.06);border-radius:8px;">✕ PEDIDO CANCELADO</div>`;
+    }
+
+    const style = `display:flex;gap:0;margin:8px 0 4px;`;
+    const stepStyle = `flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10px;font-weight:700;letter-spacing:.5px;color:#555;position:relative;`;
+    const dotStyle  = (done, cur) => `width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;border:2px solid ${done ? '#adff2f' : cur ? '#adff2f' : '#333'};background:${done ? '#adff2f' : 'transparent'};`;
+    const lineStyle = (done) => `position:absolute;top:14px;left:50%;width:100%;height:2px;background:${done ? '#adff2f' : '#222'};z-index:0;`;
+
+    return `<div style="${style}">
+        ${pasos.map((paso, i) => {
+            const done = i < actual;
+            const cur  = i === actual;
+            return `<div style="${stepStyle}">
+                ${i < pasos.length - 1 ? `<div style="${lineStyle(done)}"></div>` : ''}
+                <div style="${dotStyle(done, cur)};position:relative;z-index:1;">${done ? '✓' : paso.icon}</div>
+                <div style="color:${done || cur ? '#adff2f' : '#555'};">${paso.label}</div>
+            </div>`;
+        }).join('')}
+    </div>`;
+}
+
 function abrirModal(id) {
     const p = todosLosPedidos.find(x => x.id === id);
     if (!p) return;
@@ -1019,12 +1059,12 @@ function abrirModal(id) {
         </div>`).join('');
 
     // Todos los estados visibles — los no disponibles tienen cursor:not-allowed
-    const todosEstados = ['pendiente','cancelado','pagado','enviado','entregado'];
+    const ep           = p.estado_pago || 'pendiente';
     const disponibles  = ep === 'pagado' ? ['pagado','enviado','entregado'] : ['pendiente','cancelado'];
 
-    const estadoBtns = todosEstados.map(e => {
+    const estadoBtns = ['pendiente','cancelado','pagado','enviado','entregado'].map(e => {
         const activo = disponibles.includes(e);
-        return `<button class="estado-btn ${p.estado === e ? 'active' : ''} ${!activo ? 'no-disponible' : ''}"
+        return `<button class="estado-btn ${p.estado === e ? 'active' : ''}"
             data-estado="${e}"
             style="${!activo ? 'cursor:not-allowed; opacity:0.4;' : ''}"
             ${activo ? `onclick="cambiarEstado('${p.id}', '${e}')"` : `title="No disponible"`}
@@ -1057,6 +1097,18 @@ function abrirModal(id) {
         <div class="modal-title">${p.nombre}</div>
         <div class="modal-id">Pedido #${idCorto} &middot; ${fecha}</div>
 
+        <!-- TIMELINE según tipo de entrega -->
+        <div class="modal-section">
+            <div class="modal-section-title">SEGUIMIENTO</div>
+            ${getAdminTimeline(p)}
+        </div>
+
+        <!-- MENSAJE DE ESTADO -->
+        ${ep !== 'pagado' ? `
+        <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:10px;padding:12px 14px;margin-bottom:1rem;font-size:13px;color:#f59e0b;">
+            ⚠️ ${ep === 'cancelado' ? 'El usuario canceló el pedido. No se realizó ningún cobro.' : 'El usuario aún no ha pagado su pedido. La factura no está disponible.'}
+        </div>` : ''}
+
         <div class="modal-section">
             <div class="modal-section-title">INFORMACIÓN DE CONTACTO</div>
             <div class="modal-info-grid">
@@ -1069,9 +1121,16 @@ function abrirModal(id) {
                     <div class="modal-info-value" style="font-size:12px;">${p.email}</div>
                 </div>
                 <div class="modal-info-item" style="grid-column:1/-1;">
-                    <div class="modal-info-label">DIRECCIÓN</div>
-                    <div class="modal-info-value">${p.direccion}</div>
+                    <div class="modal-info-label">TIPO DE ENTREGA</div>
+                    <div class="modal-info-value">
+                        ${p.tipo_entrega === 'domicilio' ? '🚚 Envío a domicilio' : '🏪 Recogida en tienda — Calle 13 #25-66'}
+                    </div>
                 </div>
+                ${p.tipo_entrega === 'domicilio' ? `
+                <div class="modal-info-item" style="grid-column:1/-1;">
+                    <div class="modal-info-label">DIRECCIÓN DE ENVÍO</div>
+                    <div class="modal-info-value">${p.direccion_envio || p.direccion || '—'}</div>
+                </div>` : ''}
                 ${p.notas ? `<div class="modal-info-item" style="grid-column:1/-1;">
                     <div class="modal-info-label">NOTAS DEL CLIENTE</div>
                     <div class="modal-info-value" style="color:var(--muted); font-weight:400;">${p.notas}</div>
@@ -1088,7 +1147,7 @@ function abrirModal(id) {
                     <span>Descuento</span><span>-$${fmt(p.descuento)} COP</span>
                 </div>` : ''}
                 <div class="modal-total-row">
-                    <span>Envío</span><span>${p.envio > 0 ? '$' + fmt(p.envio) + ' COP' : '¡Gratis!'}</span>
+                    <span>Envío</span><span>${p.tipo_entrega === 'tienda' ? '—' : (p.envio > 0 ? '$' + fmt(p.envio) + ' COP' : '¡Gratis!')}</span>
                 </div>
                 <div class="modal-total-row final">
                     <span>TOTAL</span><span>$${fmt(p.total)} COP</span>
