@@ -540,6 +540,8 @@
         }
         .estado-btn[data-estado="pendiente"]:hover,
         .estado-btn[data-estado="pendiente"].active  { background: rgba(245,158,11,0.15); color: var(--pendiente); border-color: var(--pendiente); }
+        .estado-btn[data-estado="pagado"]:hover,
+        .estado-btn[data-estado="pagado"].active     { background: rgba(34,197,94,0.15);  color: #22c55e;          border-color: #22c55e; }
         .estado-btn[data-estado="enviado"]:hover,
         .estado-btn[data-estado="enviado"].active    { background: rgba(59,130,246,0.15);  color: var(--enviado);   border-color: var(--enviado); }
         .estado-btn[data-estado="entregado"]:hover,
@@ -1087,8 +1089,8 @@ function abrirModal(id) {
     // enviado    → solo entregado activo
     // entregado  → ninguno activo (pedido finalizado)
     function puedeActivar(estadoBtn) {
-        if (esCancelado)          return estadoBtn === 'cancelado'; // solo ver que está cancelado
-        if (p.estado === 'pendiente') return !['cancelado','pagado','enviado'].includes(estadoBtn);
+        if (esCancelado)              return estadoBtn === 'cancelado';
+        if (p.estado === 'pendiente') return ['pendiente','pagado'].includes(estadoBtn);
         if (p.estado === 'pagado')    return ['pagado','enviado','entregado'].includes(estadoBtn);
         if (p.estado === 'enviado')   return estadoBtn === 'entregado';
         if (p.estado === 'entregado') return false;
