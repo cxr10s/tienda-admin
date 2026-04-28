@@ -389,6 +389,15 @@
         .badge-cancelado { background: rgba(239,68,68,0.15);  color: var(--cancelado); }
         .badge-pagado    { background: rgba(34,197,94,0.15);  color: #22c55e; }
 
+        /* Animación botón pagado activo */
+        .btn-pagado-anim {
+            animation: pagadoPulse 1.8s ease-in-out infinite;
+        }
+        @keyframes pagadoPulse {
+            0%,100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
+            50%      { box-shadow: 0 0 0 6px rgba(34,197,94,0); }
+        }
+
         .badge-pago {
             display: inline-block;
             padding: 3px 9px;
@@ -723,6 +732,8 @@
             <button class="filter-btn" onclick="setFiltro('enviado', this)">Enviados</button>
             <button class="filter-btn" onclick="setFiltro('entregado', this)">Entregados</button>
             <button class="filter-btn" onclick="setFiltro('cancelado', this)">Cancelados</button>
+            <button class="filter-btn" id="btn-filtro-recogida" onclick="setFiltroEntrega('tienda', this)">🏪 Recogida</button>
+            <button class="filter-btn" id="btn-filtro-domicilio" onclick="setFiltroEntrega('domicilio', this)">🚚 Domicilios</button>
             <div class="toolbar-right">
                 <input class="search-input" type="text" placeholder="Buscar nombre, email o ID..." 
                        oninput="buscar(this.value)" id="search-input">
@@ -1058,17 +1069,48 @@ function abrirModal(id) {
             </div>
         </div>`).join('');
 
-    // Todos los estados visibles — los no disponibles tienen cursor:not-allowed
-    const ep           = p.estado_pago || 'pendiente';
-    const disponibles  = ep === 'pagado' ? ['pagado','enviado','entregado'] : ['pendiente','cancelado'];
+    // ── BOTONES DE CAMBIO DE ESTADO ──────────────────────────────
+    const ep          = p.estado_pago || 'pendiente';
+    const esRecogida  = (p.tipo_entrega || 'tienda') !== 'domicilio';
+    const esCancelado = p.estado === 'cancelado' || ep === 'cancelado';
 
-    const estadoBtns = ['pendiente','cancelado','pagado','enviado','entregado'].map(e => {
-        const activo = disponibles.includes(e);
-        return `<button class="estado-btn ${p.estado === e ? 'active' : ''}"
+    // Estados disponibles según tipo de entrega
+    // Recogida: sin "enviado" | Domicilio: todos
+    const todosEstados = esRecogida
+        ? ['pendiente', 'cancelado', 'pagado', 'entregado']
+        : ['pendiente', 'cancelado', 'pagado', 'enviado', 'entregado'];
+
+    // Lógica de habilitación según estado actual:
+    // cancelado  → solo "cancelado" activo (ya no se puede cambiar)
+    // pendiente  → todos excepto cancelado, pagado, enviado (con not-allowed)
+    // pagado     → pagado, enviado, entregado activos | pendiente y cancelado not-allowed
+    // enviado    → solo entregado activo
+    // entregado  → ninguno activo (pedido finalizado)
+    function puedeActivar(estadoBtn) {
+        if (esCancelado)          return estadoBtn === 'cancelado'; // solo ver que está cancelado
+        if (p.estado === 'pendiente') return !['cancelado','pagado','enviado'].includes(estadoBtn);
+        if (p.estado === 'pagado')    return ['pagado','enviado','entregado'].includes(estadoBtn);
+        if (p.estado === 'enviado')   return estadoBtn === 'entregado';
+        if (p.estado === 'entregado') return false;
+        return true;
+    }
+
+    const labelMap = {
+        pendiente: 'Pendiente', cancelado: 'Cancelado',
+        pagado: 'Pagado', enviado: 'Enviado', entregado: 'Entregado'
+    };
+
+    // Animación solo para estado "pagado" cuando es el estado actual
+    const estadoBtns = todosEstados.map(e => {
+        const activo    = puedeActivar(e);
+        const esCurrent = p.estado === e;
+        const isPagado  = e === 'pagado';
+        return `<button
+            class="estado-btn ${esCurrent ? 'active' : ''} ${isPagado && esCurrent ? 'btn-pagado-anim' : ''}"
             data-estado="${e}"
-            style="${!activo ? 'cursor:not-allowed; opacity:0.4;' : ''}"
-            ${activo ? `onclick="cambiarEstado('${p.id}', '${e}')"` : `title="No disponible"`}
-            >${e.charAt(0).toUpperCase() + e.slice(1)}</button>`;
+            style="${!activo ? 'cursor:not-allowed;opacity:0.35;' : 'cursor:pointer;'}"
+            ${activo && !esCancelado ? `onclick="cambiarEstado('${p.id}', '${e}')"` : `title="${esCancelado ? 'Pedido cancelado' : 'No disponible en este estado'}"`}
+            >${labelMap[e]}</button>`;
     }).join('');
 
     const pagoColor = ep === 'pagado'    ? '#22c55e'
