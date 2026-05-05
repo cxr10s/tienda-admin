@@ -879,9 +879,11 @@ async function cargarPedidos() {
         todosLosPedidos = await supabaseFetch('pedidos?order=created_at.desc&select=*');
         actualizarStats();
         renderTabla(pedidosFiltrados());
+        return todosLosPedidos; // permite .then() encadenado
     } catch (e) {
         document.getElementById('table-body').innerHTML =
             '<div class="loading" style="color:#ef4444;">&#9888; Error al cargar pedidos</div>';
+        return [];
     }
 }
 
@@ -934,11 +936,20 @@ function setFiltroEntrega(tipo, btn) {
     filtroActual  = 'todos';
     document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    // Recogida y Domicilios: solo pagados (listos para despachar)
-    const lista = todosLosPedidos.filter(p =>
-        (p.tipo_entrega || 'tienda') === tipo && p.estado_pago === 'pagado'
-    );
-    renderTabla(lista);
+
+    const aplicarFiltro = () => {
+        const lista = todosLosPedidos.filter(p =>
+            (p.tipo_entrega || 'tienda') === tipo && p.estado_pago === 'pagado'
+        );
+        renderTabla(lista);
+    };
+
+    // Si los pedidos no se han cargado aún, cargarlos primero
+    if (!todosLosPedidos || todosLosPedidos.length === 0) {
+        cargarPedidos().then(aplicarFiltro);
+    } else {
+        aplicarFiltro();
+    }
 }
 
 function toggleFiltroPago(btn) {
@@ -1224,6 +1235,11 @@ function abrirModal(id) {
         </div>
 
         <div class="modal-footer-btns">
+            <button class="modal-action-btn" style="color:#888;border-color:#333;"
+                onclick="actualizarPedidoModal('${p.id}')">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:middle;margin-right:5px;"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                Actualizar
+            </button>
             <button class="modal-action-btn modal-btn-factura"
                 onclick="generarFacturaPDF(todosLosPedidos.find(x=>x.id==='${p.id}'))">
                 <i class="fa-solid fa-file-invoice"></i> Descargar Factura
@@ -1236,6 +1252,21 @@ function abrirModal(id) {
     `;
 
     document.getElementById('modal-overlay').classList.add('show');
+}
+
+// ── ACTUALIZAR PEDIDO DESDE MODAL ───────────────────────────────
+async function actualizarPedidoModal(id) {
+    showToast('Actualizando...', '#555');
+    try {
+        const data = await supabaseFetch(`pedidos?id=eq.${id}&select=*`);
+        if (!data || !data[0]) return;
+        const idx = todosLosPedidos.findIndex(p => p.id === id);
+        if (idx !== -1) todosLosPedidos[idx] = data[0];
+        actualizarStats();
+        renderTabla(pedidosFiltrados());
+        abrirModal(id); // Re-abre con datos frescos
+        showToast('✓ Actualizado', '#22c55e');
+    } catch(e) { showToast('Error al actualizar', '#ef4444'); }
 }
 
 function cerrarModal() {
