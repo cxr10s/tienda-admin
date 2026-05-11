@@ -53,13 +53,16 @@ async function generarFacturaPDF(pedido) {
     const setFill   = (r,g,b) => doc.setFillColor(r,g,b);
     const setStroke = (r,g,b) => doc.setDrawColor(r,g,b);
 
-    function badge(x, by, w, h, text, bg, textColor = C.white, fontSize = 8) {
+    function badge(x, by, w, h, text, bg, textColor = C.white, fontSize = 8, iconDraw = null) {
         setFill(...bg);
         doc.roundedRect(x, by, w, h, h/2, h/2, 'F');
+        if (iconDraw) {
+            iconDraw(doc, x + 7, by + h/2);
+        }
         setColor(...textColor);
         doc.setFont('helvetica','bold');
         doc.setFontSize(fontSize);
-        doc.text(text, x + w/2, by + h/2 + 1.2, { align:'center' });
+        doc.text(text, x + w/2 + (iconDraw ? 6 : 0), by + h/2 + 1.2, { align:'center' });
     }
 
     function hLine(lx, ly, lw, color = C.border, thickness = 0.4) {
@@ -81,7 +84,7 @@ async function generarFacturaPDF(pedido) {
     setColor(...C.accent);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(26);
-    doc.text('STORE.', margin + 2, 22);
+    doc.text('Shop', margin + 2, 22);
 
     setColor(180, 180, 190);
     doc.setFont('helvetica', 'normal');
@@ -136,8 +139,14 @@ async function generarFacturaPDF(pedido) {
     setColor(...C.gray);
     const emailLines = doc.splitTextToSize(pedido.email || '—', colW - 10);
     doc.text(emailLines, margin + 5, y + 23);
-    doc.text(`📞 ${pedido.telefono || '—'}`, margin + 5, y + 30);
-    if (pedido.documento) doc.text(`🪪 ${pedido.documento}`, margin + 5, y + 37);
+    // Teléfono con ícono
+    drawPhoneIcon(doc, margin + 5, y + 29);
+    doc.text(`${pedido.telefono || '—'}`, margin + 12, y + 30);
+    // Documento con ícono
+    if (pedido.documento) {
+        drawIdIcon(doc, margin + 5, y + 36);
+        doc.text(`${pedido.documento}`, margin + 12, y + 37);
+    }
 
     // Tarjeta entrega
     const col2X = margin + colW + 6;
@@ -150,7 +159,6 @@ async function generarFacturaPDF(pedido) {
     doc.text('ENTREGA', col2X + 5, y + 8);
 
     const tipoEntrega = pedido.tipo_entrega || 'tienda';
-    const icono = tipoEntrega === 'domicilio' ? '🚚' : '🏪';
     const tipoLabel = tipoEntrega === 'domicilio' ? 'Envío a domicilio' : 'Recogida en tienda';
     const dirLabel  = tipoEntrega === 'domicilio'
         ? (pedido.direccion_envio || pedido.direccion || '—')
@@ -159,7 +167,12 @@ async function generarFacturaPDF(pedido) {
     setColor(...C.black);
     doc.setFont('helvetica','bold');
     doc.setFontSize(9);
-    doc.text(`${icono} ${tipoLabel}`, col2X + 5, y + 16);
+    if (tipoEntrega === 'domicilio') {
+        drawTruckIcon(doc, col2X + 5, y + 14);
+    } else {
+        drawStoreIcon(doc, col2X + 5, y + 14);
+    }
+    doc.text(`${tipoLabel}`, col2X + 12, y + 16);
 
     doc.setFont('helvetica','normal');
     doc.setFontSize(8);
@@ -179,15 +192,20 @@ async function generarFacturaPDF(pedido) {
     const ep = pedido.estado_pago || 'pendiente';
     const es = pedido.estado      || 'pendiente';
 
+    // Íconos para badges de estado
+    const iconCheck = (doc, x, y) => { doc.setLineWidth(1.2); doc.setDrawColor(255,255,255); doc.line(x-2, y+1, x, y+3); doc.line(x, y+3, x+4, y-2); };
+    const iconCross = (doc, x, y) => { doc.setLineWidth(1.2); doc.setDrawColor(255,255,255); doc.line(x-2, y-2, x+2, y+2); doc.line(x+2, y-2, x-2, y+2); };
+    const iconClock = (doc, x, y) => { doc.setLineWidth(1); doc.setDrawColor(255,255,255); doc.circle(x, y, 2.5, 'S'); doc.line(x, y, x, y-2); doc.line(x, y, x+1.5, y); };
+
     const pagoConfig = {
-        pagado:    { label:'✅ PAGO CONFIRMADO',   bg: C.green,  text: C.white },
-        cancelado: { label:'❌ PEDIDO CANCELADO',   bg: C.red,    text: C.white },
-        error:     { label:'❌ PAGO RECHAZADO',     bg: C.red,    text: C.white },
-        pendiente: { label:'⏳ PAGO PENDIENTE',     bg: [245,158,11], text: C.white },
+        pagado:    { label:'PAGO CONFIRMADO',   bg: C.green,  text: C.white, icon: iconCheck },
+        cancelado: { label:'PEDIDO CANCELADO',  bg: C.red,    text: C.white, icon: iconCross },
+        error:     { label:'PAGO RECHAZADO',    bg: C.red,    text: C.white, icon: iconCross },
+        pendiente: { label:'PAGO PENDIENTE',    bg: [245,158,11], text: C.white, icon: iconClock },
     };
     const pc = pagoConfig[ep] || pagoConfig.pendiente;
 
-    badge(margin, y, 70, 9, pc.label, pc.bg, pc.text, 7.5);
+    badge(margin, y, 70, 9, pc.label, pc.bg, pc.text, 7.5, pc.icon);
 
     const estadoConfig = {
         pendiente:  { label:'PENDIENTE',  bg:[245,158,11] },
@@ -200,7 +218,7 @@ async function generarFacturaPDF(pedido) {
     badge(margin + 76, y, 42, 9, ec.label, ec.bg, C.white, 7);
 
     // Método de pago
-    badge(margin + 124, y, 50, 9, `💜 Nequi · #${idCorto}`, [240,235,255], [99,60,180], 7);
+    badge(margin + 124, y, 50, 9, `Nequi · #${idCorto}`, [240,235,255], [99,60,180], 7);
 
     y += 17;
 
@@ -348,11 +366,19 @@ async function generarFacturaPDF(pedido) {
         setFill(...(done ? C.green : cur ? C.purple : C.border));
         doc.circle(cx, y + 4, 4, 'F');
 
-        // Check o número
+        // Check o número (ahora solo número, para evitar caracteres raros)
         setColor(...C.white);
         doc.setFont('helvetica','bold');
         doc.setFontSize(7);
-        doc.text(done ? '✓' : String(i+1), cx, y + 6, { align:'center' });
+        if (done && i !== 0) {
+            // Dibujar check
+            doc.setLineWidth(1.2);
+            doc.setDrawColor(255,255,255);
+            doc.line(cx-2, y+5, cx, y+7);
+            doc.line(cx, y+7, cx+3, y+2);
+        } else {
+            doc.text(String(i+1), cx, y + 6, { align:'center' });
+        }
 
         // Label
         setColor(...(done ? C.green : cur ? C.purple : C.gray));
@@ -371,7 +397,43 @@ async function generarFacturaPDF(pedido) {
     setColor(...C.purple);
     doc.setFont('helvetica','bold');
     doc.setFontSize(11);
-    doc.text('¡Gracias por tu compra! 🎉', W/2, y, { align:'center' });
+    doc.text('¡Gracias por tu compra!', W/2, y, { align:'center' });
+// ── ICONOS VECTORIALES ─────────────────────────────
+// Teléfono
+function drawPhoneIcon(doc, x, y) {
+    doc.setDrawColor(110,110,125);
+    doc.setLineWidth(0.7);
+    doc.arc(x+2, y+2, 2, 0.7*Math.PI, 1.7*Math.PI, false);
+    doc.line(x+2, y+4, x+2, y+5.2);
+    doc.line(x+1, y+5.2, x+3, y+5.2);
+}
+// Documento
+function drawIdIcon(doc, x, y) {
+    doc.setDrawColor(110,110,125);
+    doc.setLineWidth(0.7);
+    doc.rect(x, y, 4, 5);
+    doc.line(x+1, y+1.5, x+3, y+1.5);
+    doc.line(x+1, y+3, x+3, y+3);
+}
+// Camión
+function drawTruckIcon(doc, x, y) {
+    doc.setDrawColor(99,60,180);
+    doc.setLineWidth(0.7);
+    doc.rect(x, y, 7, 4);
+    doc.rect(x+7, y+1.5, 3, 2.5);
+    doc.circle(x+2, y+4.5, 1, 'S');
+    doc.circle(x+8, y+4.5, 1, 'S');
+}
+// Tienda
+function drawStoreIcon(doc, x, y) {
+    doc.setDrawColor(99,60,180);
+    doc.setLineWidth(0.7);
+    doc.rect(x, y, 7, 4);
+    doc.line(x, y, x+3.5, y-2);
+    doc.line(x+7, y, x+3.5, y-2);
+    doc.line(x+2, y+4, x+2, y+2);
+    doc.line(x+5, y+4, x+5, y+2);
+}
 
     y += 7;
     setColor(...C.gray);
