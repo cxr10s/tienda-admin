@@ -1,467 +1,168 @@
-// =============================================
-// FACTURA.JS — Generador de facturas PDF
-// Diseño moderno con jsPDF
-// =============================================
-
-function fmt(n) {
-    return Math.round(Number(n)).toLocaleString('es-CO');
-}
-
 async function generarFacturaPDF(pedido) {
-    if (!pedido) {
-        alert('Error: no se encontró la información del pedido.');
-        return;
-    }
-
-    // Cargar jsPDF si no está disponible
-    if (!window.jspdf) {
-        await new Promise((resolve, reject) => {
-            const s = document.createElement('script');
-            s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
-            s.onload = resolve;
-            s.onerror = () => reject(new Error('No se pudo cargar jsPDF'));
-            document.head.appendChild(s);
-        });
-    }
-
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
-
-    const W      = 210;
-    const H      = 297;
-    const margin = 18;
-    let   y      = 0;
-
-    // ── Paleta ───────────────────────────────────
-    const C = {
-        black:      [14,  14,  14 ],
-        dark:       [28,  28,  35 ],
-        purple:     [99,  60,  180],
-        purpleLight:[124, 88,  213],
-        green:      [22,  163, 74 ],
-        greenLight: [240, 253, 244],
-        red:        [220, 38,  38 ],
-        gray:       [110, 110, 125],
-        grayLight:  [245, 245, 250],
-        border:     [226, 226, 235],
-        white:      [255, 255, 255],
-        accent:     [173, 255, 47 ], // verde lima
-    };
-
-    // ── Helpers ──────────────────────────────────
-    const setColor  = (r,g,b) => doc.setTextColor(r,g,b);
-    const setFill   = (r,g,b) => doc.setFillColor(r,g,b);
-    const setStroke = (r,g,b) => doc.setDrawColor(r,g,b);
-
-    function badge(x, by, w, h, text, bg, textColor = C.white, fontSize = 8, iconDraw = null) {
-        setFill(...bg);
-        doc.roundedRect(x, by, w, h, h/2, h/2, 'F');
-        if (iconDraw) {
-            iconDraw(doc, x + 7, by + h/2);
-        }
-        setColor(...textColor);
-        doc.setFont('helvetica','bold');
-        doc.setFontSize(fontSize);
-        doc.text(text, x + w/2 + (iconDraw ? 6 : 0), by + h/2 + 1.2, { align:'center' });
-    }
-
-    function hLine(lx, ly, lw, color = C.border, thickness = 0.4) {
-        setStroke(...color);
-        doc.setLineWidth(thickness);
-        doc.line(lx, ly, lx + lw, ly);
-    }
-
-    // ── HEADER ───────────────────────────────────
-    // Fondo oscuro completo del header
-    setFill(...C.dark);
-    doc.rect(0, 0, W, 52, 'F');
-
-    // Acento izquierdo (barra verde lima)
-    setFill(...C.accent);
-    doc.rect(0, 0, 5, 52, 'F');
-
-    // Logo / nombre
-    setColor(...C.accent);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(26);
-    doc.text('Shop', margin + 2, 22);
-
-    setColor(180, 180, 190);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
-    doc.text('Tienda Deportiva — Colombia', margin + 2, 30);
-    doc.text('cxr10s.github.io/tienda', margin + 2, 37);
-
-    // Badge de factura (derecha)
-    const idCorto = (pedido.id || 'LOCAL000').substring(0, 8).toUpperCase();
-    setFill(...C.purple);
-    doc.roundedRect(W - margin - 52, 10, 52, 30, 4, 4, 'F');
-
-    setColor(...C.white);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
-    doc.text('FACTURA', W - margin - 26, 19, { align:'center' });
-    doc.setFontSize(14);
-    doc.text(`#${idCorto}`, W - margin - 26, 28, { align:'center' });
-
-    const fechaObj  = pedido.created_at ? new Date(pedido.created_at) : new Date();
-    const fechaStr  = fechaObj.toLocaleDateString('es-CO', { day:'2-digit', month:'short', year:'numeric' });
-    const horaStr   = fechaObj.toLocaleTimeString('es-CO', { hour:'2-digit', minute:'2-digit', hour12:true }).toUpperCase();
-    setColor(200, 200, 215);
-    doc.setFont('helvetica','normal');
-    doc.setFontSize(7);
-    doc.text(`${fechaStr}  ${horaStr}`, W - margin - 26, 36, { align:'center' });
-
-    y = 64;
-
-    // ── SECCIÓN CLIENTE + ENTREGA ─────────────────
-    // Dos columnas
-    const colW = (W - margin*2 - 6) / 2;
-
-    // Tarjeta cliente
-    setFill(...C.grayLight);
-    setStroke(...C.border);
-    doc.setLineWidth(0.3);
-    doc.roundedRect(margin, y, colW, 46, 3, 3, 'FD');
-
-    setColor(...C.purple);
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(7);
-    doc.text('CLIENTE', margin + 5, y + 8);
-
-    setColor(...C.black);
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(10);
-    doc.text(pedido.nombre || '—', margin + 5, y + 16);
-
-    doc.setFont('helvetica','normal');
-    doc.setFontSize(8);
-    setColor(...C.gray);
-    const emailLines = doc.splitTextToSize(pedido.email || '—', colW - 10);
-    doc.text(emailLines, margin + 5, y + 23);
-    // Teléfono con ícono
-    drawPhoneIcon(doc, margin + 5, y + 29);
-    doc.text(`${pedido.telefono || '—'}`, margin + 12, y + 30);
-    // Documento con ícono
-    if (pedido.documento) {
-        drawIdIcon(doc, margin + 5, y + 36);
-        doc.text(`${pedido.documento}`, margin + 12, y + 37);
-    }
-
-    // Tarjeta entrega
-    const col2X = margin + colW + 6;
-    setFill(...C.grayLight);
-    doc.roundedRect(col2X, y, colW, 46, 3, 3, 'FD');
-
-    setColor(...C.purple);
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(7);
-    doc.text('ENTREGA', col2X + 5, y + 8);
-
-    const tipoEntrega = pedido.tipo_entrega || 'tienda';
-    const tipoLabel = tipoEntrega === 'domicilio' ? 'Envío a domicilio' : 'Recogida en tienda';
-    const dirLabel  = tipoEntrega === 'domicilio'
-        ? (pedido.direccion_envio || pedido.direccion || '—')
-        : 'Calle 13 #25-66';
-
-    setColor(...C.black);
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(9);
-    if (tipoEntrega === 'domicilio') {
-        drawTruckIcon(doc, col2X + 5, y + 14);
-    } else {
-        drawStoreIcon(doc, col2X + 5, y + 14);
-    }
-    doc.text(`${tipoLabel}`, col2X + 12, y + 16);
-
-    doc.setFont('helvetica','normal');
-    doc.setFontSize(8);
-    setColor(...C.gray);
-    const dirLines = doc.splitTextToSize(dirLabel, colW - 10);
-    doc.text(dirLines, col2X + 5, y + 23);
-
-    if (pedido.notas) {
-        doc.setFontSize(7.5);
-        const notaLines = doc.splitTextToSize(`Nota: ${pedido.notas}`, colW - 10);
-        doc.text(notaLines, col2X + 5, y + 32);
-    }
-
-    y += 54;
-
-    // ── ESTADO DEL PEDIDO ─────────────────────────
-    const ep = pedido.estado_pago || 'pendiente';
-    const es = pedido.estado      || 'pendiente';
-
-    // Íconos para badges de estado
-    const iconCheck = (doc, x, y) => { doc.setLineWidth(1.2); doc.setDrawColor(255,255,255); doc.line(x-2, y+1, x, y+3); doc.line(x, y+3, x+4, y-2); };
-    const iconCross = (doc, x, y) => { doc.setLineWidth(1.2); doc.setDrawColor(255,255,255); doc.line(x-2, y-2, x+2, y+2); doc.line(x+2, y-2, x-2, y+2); };
-    const iconClock = (doc, x, y) => { doc.setLineWidth(1); doc.setDrawColor(255,255,255); doc.circle(x, y, 2.5, 'S'); doc.line(x, y, x, y-2); doc.line(x, y, x+1.5, y); };
-
-    const pagoConfig = {
-        pagado:    { label:'PAGO CONFIRMADO',   bg: C.green,  text: C.white, icon: iconCheck },
-        cancelado: { label:'PEDIDO CANCELADO',  bg: C.red,    text: C.white, icon: iconCross },
-        error:     { label:'PAGO RECHAZADO',    bg: C.red,    text: C.white, icon: iconCross },
-        pendiente: { label:'PAGO PENDIENTE',    bg: [245,158,11], text: C.white, icon: iconClock },
-    };
-    const pc = pagoConfig[ep] || pagoConfig.pendiente;
-
-    badge(margin, y, 70, 9, pc.label, pc.bg, pc.text, 7.5, pc.icon);
-
-    const estadoConfig = {
-        pendiente:  { label:'PENDIENTE',  bg:[245,158,11] },
-        pagado:     { label:'PAGADO',     bg: C.green     },
-        enviado:    { label:'EN CAMINO',  bg:[59,130,246] },
-        entregado:  { label:'ENTREGADO',  bg: C.green     },
-        cancelado:  { label:'CANCELADO',  bg: C.red       },
-    };
-    const ec = estadoConfig[es] || estadoConfig.pendiente;
-    badge(margin + 76, y, 42, 9, ec.label, ec.bg, C.white, 7);
-
-    // Método de pago
-    badge(margin + 124, y, 50, 9, `Nequi · #${idCorto}`, [240,235,255], [99,60,180], 7);
-
-    y += 17;
-
-    // ── TABLA PRODUCTOS ───────────────────────────
-    // Header tabla
-    setFill(...C.dark);
-    doc.roundedRect(margin, y, W - margin*2, 9, 2, 2, 'F');
-
-    setColor(...C.accent);
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(7.5);
-    doc.text('PRODUCTO', margin + 5, y + 6);
-
-    setColor(...C.white);
-    doc.text('CANT.', W - 60, y + 6, { align:'right' });
-    doc.text('PRECIO UNIT.', W - 35, y + 6, { align:'right' });
-    doc.text('SUBTOTAL', W - margin - 3, y + 6, { align:'right' });
-
-    y += 9;
-
-    const productos = Array.isArray(pedido.productos) ? pedido.productos : [];
-    productos.forEach((prod, i) => {
-        const bgRow = i % 2 === 0 ? C.white : [250, 249, 255];
-        setFill(...bgRow);
-        doc.rect(margin, y, W - margin*2, 11, 'F');
-
-        setColor(...C.black);
-        doc.setFont('helvetica', prod.isGift ? 'italic' : 'bold');
-        doc.setFontSize(8.5);
-        const nombre = prod.name + (prod.isGift ? ' 🎁' : '');
-        doc.text(nombre, margin + 5, y + 7.5);
-
-        doc.setFont('helvetica','normal');
-        setColor(...C.gray);
-        doc.text(String(prod.quantity), W - 60, y + 7.5, { align:'right' });
-
-        if (prod.isGift) {
-            setColor(...C.green);
-            doc.text('GRATIS', W - 35, y + 7.5, { align:'right' });
-            doc.text('GRATIS', W - margin - 3, y + 7.5, { align:'right' });
-        } else {
-            setColor(...C.gray);
-            doc.text(`$${fmt(prod.price)}`, W - 35, y + 7.5, { align:'right' });
-            setColor(...C.black);
-            doc.setFont('helvetica','bold');
-            doc.text(`$${fmt(prod.price * prod.quantity)}`, W - margin - 3, y + 7.5, { align:'right' });
+    try {
+        // ==============================
+        // VALIDACIONES
+        // ==============================
+        if (!pedido) {
+            throw new Error('Pedido inválido');
         }
 
-        hLine(margin, y + 11, W - margin*2);
-        y += 11;
-    });
+        // ==============================
+        // CARGAR JSPDF (Optimizado)
+        // ==============================
+        if (!window.jspdf?.jsPDF) {
+            await new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+                script.onload = resolve;
+                script.onerror = () => reject(new Error('No se pudo cargar jsPDF'));
+                document.head.appendChild(script);
+            });
+        }
 
-    y += 6;
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        
+        // Compatibilidad para rectángulos redondeados
+        if (!doc.roundedRect && doc.roundRect) {
+            doc.roundedRect = doc.roundRect;
+        }
 
-    // ── TOTALES ───────────────────────────────────
-    const totW = 88;
-    const totX = W - margin - totW;
+        // ==============================
+        // DATOS Y COLORES
+        // ==============================
+        const id = String(pedido.id || 'LOCAL').substring(0, 8).toUpperCase();
+        const productos = Array.isArray(pedido.productos) ? pedido.productos : [];
+        const FECHA = new Date().toLocaleDateString('es-CO');
+        
+        const C = {
+            dark: [20, 20, 28],
+            accent: [173, 255, 47], // Verde Lima
+            text: [40, 40, 40],
+            muted: [120, 120, 120],
+            bg: [248, 249, 252]
+        };
 
-    // Fila subtotal
-    const drawTotalRow = (label, value, color = C.gray, bold = false) => {
-        doc.setFont('helvetica', bold ? 'bold' : 'normal');
+        // ==============================
+        // HEADER (Diseño Moderno)
+        // ==============================
+        doc.setFillColor(...C.dark);
+        doc.rect(0, 0, 210, 55, 'F'); // Fondo oscuro
+
+        // Logo y Nombre
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(28);
+        doc.text('SHOP', 20, 30);
+
+        // Badge de Factura (Derecha)
+        doc.setFillColor(...C.accent);
+        doc.roundedRect(140, 15, 50, 25, 3, 3, 'F');
+        doc.setTextColor(...C.dark);
         doc.setFontSize(9);
-        setColor(...color);
-        doc.text(label, totX + 5, y);
-        doc.text(value, W - margin - 3, y, { align:'right' });
-        y += 7;
-    };
+        doc.text('FACTURA N°', 165, 25, { align: 'center' });
+        doc.setFontSize(14);
+        doc.text(`#${id}`, 165, 34, { align: 'center' });
 
-    setFill(...C.grayLight);
-    doc.roundedRect(totX, y - 4, totW, ep === 'cancelado' ? 20 : (pedido.descuento > 0 ? 36 : 29), 3, 3, 'F');
+        // ==============================
+        // INFO DE CLIENTE Y FECHA
+        // ==============================
+        doc.setTextColor(...C.text);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.text('CLIENTE:', 20, 70);
+        
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(12);
+        doc.text(`${pedido.nombre || 'Consumidor Final'}`, 20, 78);
+        
+        doc.setFontSize(9);
+        doc.setTextColor(...C.muted);
+        doc.text(`Documento: ${pedido.documento || 'N/A'}`, 20, 84);
+        doc.text(`Teléfono: ${pedido.telefono || '—'}`, 20, 89);
 
-    drawTotalRow('Subtotal', `$${fmt(pedido.subtotal)} COP`);
+        // Fecha y Entrega (Columna Derecha)
+        doc.setTextColor(...C.text);
+        doc.setFont('helvetica', 'bold');
+        doc.text('DETALLES:', 140, 70);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        doc.text(`Fecha: ${FECHA}`, 140, 78);
+        doc.text(`Envío: ${pedido.tipo_entrega || 'Estándar'}`, 140, 84);
 
-    if (pedido.descuento > 0) {
-        drawTotalRow(`Descuento`, `-$${fmt(pedido.descuento)} COP`, C.green);
+        // ==============================
+        // TABLA DE PRODUCTOS (Header)
+        // ==============================
+        let y = 110;
+        doc.setFillColor(...C.bg);
+        doc.rect(20, y - 7, 170, 10, 'F'); // Fondo header tabla
+        
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.setTextColor(...C.dark);
+        doc.text('DESCRIPCIÓN', 25, y);
+        doc.text('CANT', 120, y);
+        doc.text('TOTAL', 185, y, { align: 'right' });
+
+        doc.setDrawColor(230, 230, 230);
+        doc.line(20, y + 3, 190, y + 3);
+
+        // Listado
+        y += 12;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        
+        productos.forEach((p, index) => {
+            const subtotal = Number(p?.quantity || 0) * Number(p?.price || 0);
+            
+            doc.setTextColor(...C.text);
+            doc.text(String(p?.name || 'Producto').substring(0, 45), 25, y);
+            doc.text(String(p?.quantity || 0), 120, y);
+            doc.text(`$${subtotal.toLocaleString('es-CO')}`, 185, y, { align: 'right' });
+            
+            y += 10;
+            
+            // Línea divisoria suave
+            doc.setDrawColor(245, 245, 245);
+            doc.line(20, y - 4, 190, y - 4);
+        });
+
+        // ==============================
+        // TOTAL (Resaltado)
+        // ==============================
+        y += 5;
+        const total = Number(pedido.total || 0);
+        
+        doc.setFillColor(...C.dark);
+        doc.roundedRect(130, y, 60, 15, 2, 2, 'F');
+        
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.text('TOTAL A PAGAR', 135, y + 9);
+        
+        doc.setTextColor(...C.accent);
+        doc.setFontSize(13);
+        doc.text(`$${total.toLocaleString('es-CO')}`, 185, y + 10, { align: 'right' });
+
+        // ==============================
+        // FOOTER (Información Legal)
+        // ==============================
+        doc.setTextColor(...C.muted);
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'italic');
+        doc.text('SHOP S.A.S - NIT # - Centro, Bucaramanga', 105, 270, { align: 'center' });
+        doc.text('Señor/a Usuario/a', 105, 275, { align: 'center' });
+        doc.text('Gracias por su compra. Para cambios o devoluciones conserve este recibo.', 105, 280, { align: 'center' });
+        doc.text('Este documento es una representación gráfica de su pedido.', 105, 285, { align: 'center' });
+
+        // ==============================
+        // GUARDAR
+        // ==============================
+        doc.save(`Factura-${id}.pdf`);
+
+    } catch (err) {
+        console.error(err);
+        alert('Hubo un problema al generar el PDF: ' + err.message);
     }
-
-    const envioLabel = tipoEntrega === 'tienda' ? '—' : (pedido.envio > 0 ? `$${fmt(pedido.envio)} COP` : '¡Gratis!');
-    drawTotalRow('Envío', envioLabel);
-
-    y += 2;
-    hLine(totX + 4, y, totW - 8, C.border, 0.5);
-    y += 5;
-
-    // Total final en caja destacada
-    setFill(...C.dark);
-    doc.roundedRect(totX, y - 5, totW, 14, 3, 3, 'F');
-
-    setColor(...C.accent);
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(8);
-    doc.text('TOTAL', totX + 6, y + 3);
-
-    doc.setFontSize(12);
-    doc.text(`$${fmt(pedido.total)} COP`, W - margin - 3, y + 3.5, { align:'right' });
-
-    y += 20;
-
-    // ── ID DEL PEDIDO ─────────────────────────────
-    setFill(245, 245, 255);
-    setStroke(...C.border);
-    doc.setLineWidth(0.3);
-    doc.roundedRect(margin, y, W - margin*2, 16, 3, 3, 'FD');
-
-    setColor(...C.gray);
-    doc.setFont('helvetica','normal');
-    doc.setFontSize(7.5);
-    doc.text('Guarda este ID para rastrear tu pedido en cualquier momento:', margin + 5, y + 6);
-
-    setColor(...C.purple);
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(11);
-    doc.text(`ID: ${idCorto}`, margin + 5, y + 13);
-
-    setColor(...C.gray);
-    doc.setFont('helvetica','normal');
-    doc.setFontSize(7);
-    doc.text('cxr10s.github.io/tienda/mis-pedidos.html', W - margin - 3, y + 13, { align:'right' });
-
-    y += 24;
-
-    // ── TIMELINE DE ESTADO ────────────────────────
-    const pasosRecogida  = ['Recibido','Pagado','Entregado'];
-    const pasosDomicilio = ['Recibido','Pagado','En Camino','Entregado'];
-    const pasos = tipoEntrega === 'domicilio' ? pasosDomicilio : pasosRecogida;
-    const ordenR = { pendiente:0, pagado:1, entregado:2, cancelado:-1 };
-    const ordenD = { pendiente:0, pagado:1, enviado:2, entregado:3, cancelado:-1 };
-    const orden  = tipoEntrega === 'domicilio' ? ordenD : ordenR;
-    const actual = orden[es] ?? 0;
-
-    const stepW  = (W - margin*2) / pasos.length;
-    pasos.forEach((paso, i) => {
-        const cx = margin + stepW * i + stepW/2;
-        const done = i <= actual && es !== 'cancelado';
-        const cur  = i === actual && es !== 'cancelado';
-
-        // Línea conectora
-        if (i < pasos.length - 1) {
-            setStroke(...(done ? C.green : C.border));
-            doc.setLineWidth(0.8);
-            doc.line(cx + 5, y + 4, cx + stepW - 5, y + 4);
-        }
-
-        // Círculo
-        setFill(...(done ? C.green : cur ? C.purple : C.border));
-        doc.circle(cx, y + 4, 4, 'F');
-
-        // Check o número (ahora solo número, para evitar caracteres raros)
-        setColor(...C.white);
-        doc.setFont('helvetica','bold');
-        doc.setFontSize(7);
-        if (done && i !== 0) {
-            // Dibujar check
-            doc.setLineWidth(1.2);
-            doc.setDrawColor(255,255,255);
-            doc.line(cx-2, y+5, cx, y+7);
-            doc.line(cx, y+7, cx+3, y+2);
-        } else {
-            doc.text(String(i+1), cx, y + 6, { align:'center' });
-        }
-
-        // Label
-        setColor(...(done ? C.green : cur ? C.purple : C.gray));
-        doc.setFont('helvetica', cur ? 'bold' : 'normal');
-        doc.setFontSize(7);
-        doc.text(paso, cx, y + 13, { align:'center' });
-    });
-
-    y += 22;
-
-    // ── FOOTER ────────────────────────────────────
-    // Línea de cierre
-    hLine(margin, y, W - margin*2, C.border, 0.5);
-    y += 8;
-
-    setColor(...C.purple);
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(11);
-    doc.text('¡Gracias por tu compra!', W/2, y, { align:'center' });
-// ── ICONOS VECTORIALES ─────────────────────────────
-// Teléfono
-function drawPhoneIcon(doc, x, y) {
-    doc.setDrawColor(110,110,125);
-    doc.setLineWidth(0.7);
-    doc.arc(x+2, y+2, 2, 0.7*Math.PI, 1.7*Math.PI, false);
-    doc.line(x+2, y+4, x+2, y+5.2);
-    doc.line(x+1, y+5.2, x+3, y+5.2);
-}
-// Documento
-function drawIdIcon(doc, x, y) {
-    doc.setDrawColor(110,110,125);
-    doc.setLineWidth(0.7);
-    doc.rect(x, y, 4, 5);
-    doc.line(x+1, y+1.5, x+3, y+1.5);
-    doc.line(x+1, y+3, x+3, y+3);
-}
-// Camión
-function drawTruckIcon(doc, x, y) {
-    doc.setDrawColor(99,60,180);
-    doc.setLineWidth(0.7);
-    doc.rect(x, y, 7, 4);
-    doc.rect(x+7, y+1.5, 3, 2.5);
-    doc.circle(x+2, y+4.5, 1, 'S');
-    doc.circle(x+8, y+4.5, 1, 'S');
-}
-// Tienda
-function drawStoreIcon(doc, x, y) {
-    doc.setDrawColor(99,60,180);
-    doc.setLineWidth(0.7);
-    doc.rect(x, y, 7, 4);
-    doc.line(x, y, x+3.5, y-2);
-    doc.line(x+7, y, x+3.5, y-2);
-    doc.line(x+2, y+4, x+2, y+2);
-    doc.line(x+5, y+4, x+5, y+2);
-}
-
-    y += 7;
-    setColor(...C.gray);
-    doc.setFont('helvetica','normal');
-    doc.setFontSize(8);
-    doc.text('Este documento es tu comprobante de pedido. Consérvalo.', W/2, y, { align:'center' });
-
-    y += 6;
-    doc.setFontSize(7.5);
-    doc.text('@tienda_deportiva912 — Síguenos para novedades y descuentos', W/2, y, { align:'center' });
-
-    // Barra inferior verde lima
-    setFill(...C.dark);
-    doc.rect(0, H - 10, W, 10, 'F');
-    setFill(...C.accent);
-    doc.rect(0, H - 10, W/3, 10, 'F');
-
-    setColor(...C.dark);
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(7.5);
-    doc.text('STORE.', W/6, H - 3.5, { align:'center' });
-
-    setColor(...C.white);
-    doc.setFont('helvetica','normal');
-    doc.setFontSize(7);
-    doc.text(`Pedido #${idCorto}`, W/2, H - 3.5, { align:'center' });
-    doc.text('cxr10s.github.io/tienda', W - margin, H - 3.5, { align:'right' });
-
-    // ── GUARDAR ───────────────────────────────────
-    doc.save(`Factura-${idCorto}-STORE.pdf`);
 }
