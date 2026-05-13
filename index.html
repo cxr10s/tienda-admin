@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel Admin</title>
+    <title>Admin</title>
     <link rel="icon" type="image/svg+xml" href="icon-admin.svg">
     <link rel="apple-touch-icon" href="icon-admin.svg">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
@@ -673,7 +673,7 @@
         <h1 class="login-title">Panel Admin</h1>
         <div class="login-field">
             <label>USUARIO</label>
-            <input type="password" id="admin-user" placeholder="admin" autocomplete="off"
+            <input type="password" id="admin-user" placeholder="Usuario" autocomplete="off"
                    onkeydown="if(event.key==='Enter') document.getElementById('admin-pass').focus()">
         </div>
         <div class="login-field">
@@ -730,7 +730,7 @@
         <div class="toolbar">
             <button class="filter-btn active" onclick="setFiltro('todos', this)">Todos</button>
             <button class="filter-btn" onclick="setFiltro('pendiente', this)">Pendientes</button>
-            <button class="filter-btn" onclick="setFiltro('pagado', this)">💳 Pagados</button>
+            <button class="filter-btn" onclick="setFiltro('pagado', this)">Pagados</button>
             <button class="filter-btn" onclick="setFiltro('enviado', this)">Enviados</button>
             <button class="filter-btn" onclick="setFiltro('entregado', this)">Entregados</button>
             <button class="filter-btn" onclick="setFiltro('cancelado', this)">Cancelados</button>
@@ -1074,7 +1074,7 @@ function abrirModal(id) {
     const productosHTML = productos.map(prod => `
         <div class="modal-product">
             <div>
-                <div class="modal-product-name">${prod.name}${prod.isGift ? ' 🎁' : ''}</div>
+                <div class="modal-product-name">${prod.name}${prod.isGift ? ' ' : ''}</div>
                 <div class="modal-product-qty">Cantidad: ${prod.quantity}</div>
             </div>
             <div class="modal-product-price">
@@ -1208,7 +1208,7 @@ function abrirModal(id) {
                     <span>Descuento</span><span>-$${fmt(p.descuento)} COP</span>
                 </div>` : ''}
                 <div class="modal-total-row">
-                    <span>Envío</span><span>${p.tipo_entrega === 'tienda' ? '—' : (p.envio > 0 ? '$' + fmt(p.envio) + ' COP' : '¡Gratis!')}</span>
+                    <span>Envío</span><span>${p.tipo_entrega === 'tienda' ? '—' : (p.envio > 0 ? '$' + fmt(p.envio) + ' COP' : 'Gratis')}</span>
                 </div>
                 <div class="modal-total-row final">
                     <span>TOTAL</span><span>$${fmt(p.total)} COP</span>
